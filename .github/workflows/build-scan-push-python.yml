@@ -38,13 +38,30 @@ on:
         required: false
         type: boolean
         default: true
-        description: "Whether to run flake8"    outputs:
+        description: "Whether to run flake8"
+      push-to-ecr:
+        required: false
+        type: boolean
+        default: false
+        description: "Whether to push image to ECR"
+      ecr-registry-url:
+        required: false
+        type: string
+        description: "ECR registry URL (e.g., 739962689681.dkr.ecr.us-east-1.amazonaws.com)"
+      ecr-repository-name:
+        required: false
+        type: string
+        description: "ECR repository name (e.g., bluocean-riskgps-dev-backend-agent)"
+    outputs:
       image-name:
         description: "Built Docker image name (e.g., backend-agent:v1.0.10)"
         value: ${{ jobs.build-docker-image.outputs.image-name }}
       image-tag:
         description: "Built Docker image tag (e.g., v1.0.10)"
         value: ${{ jobs.build-docker-image.outputs.image-tag }}
+      ecr-image-pushed:
+        description: "Full ECR image URL if pushed (e.g., 739962689681.dkr.ecr.us-east-1.amazonaws.com/bluocean-riskgps-dev-backend-agent:v1.0.10)"
+        value: ${{ jobs.build-docker-image.outputs.ecr-image-pushed }}
 permissions:
   id-token: write
   contents: read
@@ -128,6 +145,7 @@ jobs:
     outputs:
       image-tag: ${{ steps.generate-tag.outputs.tag }}
       image-name: ${{ steps.generate-tag.outputs.image-name }}
+      ecr-image-pushed: ${{ steps.push-to-ecr.outputs.ecr-image || '' }}
     steps:
       - name: Checkout code
         uses: actions/checkout@v4
@@ -172,6 +190,33 @@ jobs:
           ignore-unfixed: true
           vuln-type: "os,library"
           severity: "CRITICAL,HIGH"
+
+      - name: Login to ECR (if pushing)
+        if: ${{ inputs.push-to-ecr == true }}
+        uses: aws-actions/amazon-ecr-login@v2
+        id: login-ecr
+
+      - name: Push to ECR
+        if: ${{ inputs.push-to-ecr == true }}
+        id: push-to-ecr
+        run: |
+          ECR_REGISTRY="${{ inputs.ecr-registry-url }}"
+          ECR_REPOSITORY="${{ inputs.ecr-repository-name }}"
+          IMAGE_TAG="${{ steps.generate-tag.outputs.tag }}"
+          LOCAL_IMAGE="${{ steps.generate-tag.outputs.image-name }}"
+          ECR_IMAGE="${ECR_REGISTRY}/${ECR_REPOSITORY}:${IMAGE_TAG}"
+          
+          echo "📤 Pushing to ECR..."
+          echo "   Registry: $ECR_REGISTRY"
+          echo "   Repository: $ECR_REPOSITORY"
+          echo "   Tag: $IMAGE_TAG"
+          echo "   Full Image: $ECR_IMAGE"
+          
+          docker tag $LOCAL_IMAGE $ECR_IMAGE
+          docker push $ECR_IMAGE
+          
+          echo "✅ Pushed: $ECR_IMAGE"
+          echo "ecr-image=$ECR_IMAGE" >> $GITHUB_OUTPUT
 
   validation-summary:
     name: Validation Summary
