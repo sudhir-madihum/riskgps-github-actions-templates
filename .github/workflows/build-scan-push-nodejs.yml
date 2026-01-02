@@ -44,6 +44,13 @@ on:
         type: boolean
         default: true
         description: "Whether to run linter"
+    outputs:
+      image-name:
+        description: "Built Docker image name (e.g., frontend:v1.0.10)"
+        value: ${{ jobs.build-docker-image.outputs.image-name }}
+      image-tag:
+        description: "Built Docker image tag (e.g., v1.0.10)"
+        value: ${{ jobs.build-docker-image.outputs.image-tag }}
 
 permissions:
   id-token: write
