@@ -374,5 +374,6 @@ For questions or issues:
 1. Check [TROUBLESHOOTING.md](./docs/TROUBLESHOOTING.md)
 2. Review [USAGE.md](./docs/USAGE.md)
 3. Open an issue in this repository
-#   r i s k g p s - g i t h u b - a c t i o n s - t e m p l a t e s  
+#   r i s k g p s - g i t h u b - a c t i o n s - t e m p l a t e s 
+ 
  

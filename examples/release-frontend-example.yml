@@ -1,0 +1,177 @@
+name: Frontend Build, Scan, and Push to AWS ECR
+
+# Example: How to use centralized reusable workflows
+# This is MUCH simpler than the original monolithic workflow
+
+on:
+  push:
+    branches:
+      - '**'
+    paths:
+      - 'src/**'
+      - 'public/**'
+      - 'package.json'
+      - 'Dockerfile'
+      - 'tsconfig.json'
+      - 'next.config.ts'
+      - '.github/workflows/release.yml'
+  pull_request:
+    branches:
+      - 'dev'
+      - 'prod'
+    paths:
+      - 'src/**'
+      - 'public/**'
+      - 'package.json'
+      - 'Dockerfile'
+      - 'tsconfig.json'
+      - 'next.config.ts'
+      - '.github/workflows/release.yml'
+  workflow_dispatch:
+
+permissions:
+  id-token: write
+  contents: read
+
+concurrency:
+  group: ${{ github.ref }}
+  cancel-in-progress: true
+
+env:
+  AWS_REGION: us-east-1
+  SERVICE_NAME: frontend
+  DEV_BRANCH: dev
+  PROD_BRANCH: prod
+  ORGANIZATION: bluocean
+  PROJECT: riskgps
+
+jobs:
+  # Step 1: Determine environment (reusable workflow)
+  determine-environment:
+    uses: <your-org>/riskgps-github-actions-templates/.github/workflows/determine-environment.yml@main
+    with:
+      dev-branch: ${{ env.DEV_BRANCH }}
+      prod-branch: ${{ env.PROD_BRANCH }}
+      skip-tests-on-prod: true
+
+  # Step 2: Build, scan, and prepare image (reusable workflow)
+  build-scan-push:
+    needs: determine-environment
+    uses: <your-org>/riskgps-github-actions-templates/.github/workflows/build-scan-push-nodejs.yml@main
+    with:
+      service-name: ${{ env.SERVICE_NAME }}
+      dockerfile-path: ./Dockerfile
+      docker-build-context: .
+      npm-cache: npm
+      node-version: "18"
+      run-tests: ${{ needs.determine-environment.outputs.run-tests == 'true' }}
+      run-linter: true
+
+  # Step 3: Push to ECR (service-specific, handles AWS auth and ECR push)
+  push-to-ecr:
+    name: Push to AWS ECR
+    runs-on: ubuntu-latest
+    needs: [build-scan-push, determine-environment]
+    if: needs.determine-environment.outputs.should-push-ecr == 'true'
+    steps:
+      - name: Checkout code
+        uses: actions/checkout@v4
+
+      - name: Configure AWS Credentials
+        uses: aws-actions/configure-aws-credentials@v4
+        with:
+          role-to-assume: arn:aws:iam::739962689681:role/GithubActionRole
+          aws-region: ${{ env.AWS_REGION }}
+
+      - name: Install jq
+        run: sudo apt-get update && sudo apt-get install -y jq
+
+      - name: Fetch ECR Configuration from SSM
+        id: get-ecr-config
+        shell: bash
+        run: |
+          ENVIRONMENT="${{ needs.determine-environment.outputs.environment }}"
+          SERVICE="${{ env.SERVICE_NAME }}"
+          AWS_REGION="${{ env.AWS_REGION }}"
+          
+          SSM_PARAMETER="/${{ env.ORGANIZATION }}/${{ env.PROJECT }}/$ENVIRONMENT/ec2/credentials"
+          
+          echo "🔍 Fetching ECR configuration from SSM..."
+          echo "   Parameter: $SSM_PARAMETER"
+          
+          CREDENTIALS=$(aws ssm get-parameter \
+            --name "$SSM_PARAMETER" \
+            --region "$AWS_REGION" \
+            --with-decryption \
+            --query 'Parameter.Value' \
+            --output text 2>&1)
+          
+          if [ $? -ne 0 ]; then
+            echo "❌ Failed to fetch from SSM: $SSM_PARAMETER"
+            exit 1
+          fi
+          
+          ECR_IMAGE=$(echo "$CREDENTIALS" | jq -r ".ecr_registry_repository_urls[\"$SERVICE\"]")
+          if [ -z "$ECR_IMAGE" ] || [ "$ECR_IMAGE" = "null" ]; then
+            echo "❌ Failed to find ECR repository URL for service: $SERVICE"
+            exit 1
+          fi
+          
+          echo "ecr_image=$ECR_IMAGE" >> $GITHUB_OUTPUT
+
+      - name: Login to Amazon ECR
+        id: login-ecr
+        uses: aws-actions/amazon-ecr-login@v2
+
+      - name: Push to ECR
+        env:
+          ECR_IMAGE: ${{ steps.get-ecr-config.outputs.ecr_image }}
+          IMAGE_TAG: ${{ needs.build-scan-push.outputs.image-tag }}
+        run: |
+          ENVIRONMENT="${{ needs.determine-environment.outputs.environment }}"
+          SERVICE="${{ env.SERVICE_NAME }}"
+          
+          ECR_IMAGE_WITH_TAG="${{ env.ECR_IMAGE }}:${{ env.IMAGE_TAG }}"
+          
+          echo "📤 Pushing to ECR..."
+          echo "   Environment: $ENVIRONMENT"
+          echo "   Service: $SERVICE"
+          echo "   Image: $ECR_IMAGE_WITH_TAG"
+          
+          docker tag ${{ needs.build-scan-push.outputs.image-name }} $ECR_IMAGE_WITH_TAG
+          docker push $ECR_IMAGE_WITH_TAG
+          
+          echo ""
+          echo "✅ Image pushed to ECR successfully!"
+
+  skip-ecr-push:
+    name: Build Complete (No ECR Push)
+    runs-on: ubuntu-latest
+    needs: [build-scan-push, determine-environment]
+    if: needs.determine-environment.outputs.should-push-ecr == 'false'
+    steps:
+      - name: Information
+        run: |
+          echo "✅ Build completed successfully"
+          echo "📸 Docker image: ${{ needs.build-scan-push.outputs.image-name }}"
+          echo "🏷️  Tag: ${{ needs.build-scan-push.outputs.image-tag }}"
+          echo ""
+          echo "⏭️  NOT pushing to ECR (feature branch or PR)"
+          echo "   Image will be pushed to ECR only on merge"
+
+  workflow-summary:
+    name: Workflow Summary
+    runs-on: ubuntu-latest
+    needs: [determine-environment, build-scan-push]
+    if: always()
+    steps:
+      - name: Generate Summary
+        run: |
+          echo "## 🎉 Frontend Pipeline Complete" >> $GITHUB_STEP_SUMMARY
+          echo "" >> $GITHUB_STEP_SUMMARY
+          echo "| Key | Value |" >> $GITHUB_STEP_SUMMARY
+          echo "|-----|-------|" >> $GITHUB_STEP_SUMMARY
+          echo "| **Branch** | ${{ github.ref_name }} |" >> $GITHUB_STEP_SUMMARY
+          echo "| **Environment** | ${{ needs.determine-environment.outputs.environment }} |" >> $GITHUB_STEP_SUMMARY
+          echo "| **Push to ECR** | ${{ needs.determine-environment.outputs.should-push-ecr == 'true' && '✅ YES' || '⏭️ NO' }} |" >> $GITHUB_STEP_SUMMARY
+          echo "| **Image** | ${{ needs.build-scan-push.outputs.image-name }} |" >> $GITHUB_STEP_SUMMARY

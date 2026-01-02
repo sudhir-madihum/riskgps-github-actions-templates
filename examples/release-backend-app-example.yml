@@ -1,0 +1,130 @@
+name: Backend App Build, Scan, and Push to AWS ECR
+
+# Example: How to use centralized reusable workflows with Node.js backend
+# Similar to frontend, but with backend-specific configuration
+
+on:
+  push:
+    branches:
+      - '**'
+    paths:
+      - 'routes/**'
+      - 'models/**'
+      - 'middleware/**'
+      - 'services/**'
+      - 'package.json'
+      - 'Dockerfile'
+      - 'server.js'
+      - '.github/workflows/release.yml'
+  pull_request:
+    branches:
+      - 'dev'
+      - 'prod'
+    paths:
+      - 'routes/**'
+      - 'models/**'
+      - 'middleware/**'
+      - 'services/**'
+      - 'package.json'
+      - 'Dockerfile'
+      - 'server.js'
+      - '.github/workflows/release.yml'
+  workflow_dispatch:
+
+permissions:
+  id-token: write
+  contents: read
+
+concurrency:
+  group: ${{ github.ref }}
+  cancel-in-progress: true
+
+env:
+  AWS_REGION: us-east-1
+  SERVICE_NAME: backend-app
+  DEV_BRANCH: dev
+  PROD_BRANCH: prod
+  ORGANIZATION: bluocean
+  PROJECT: riskgps
+
+jobs:
+  determine-environment:
+    uses: <your-org>/riskgps-github-actions-templates/.github/workflows/determine-environment.yml@main
+    with:
+      dev-branch: ${{ env.DEV_BRANCH }}
+      prod-branch: ${{ env.PROD_BRANCH }}
+      skip-tests-on-prod: true
+
+  build-scan-push:
+    needs: determine-environment
+    uses: <your-org>/riskgps-github-actions-templates/.github/workflows/build-scan-push-nodejs.yml@main
+    with:
+      service-name: ${{ env.SERVICE_NAME }}
+      dockerfile-path: ./Dockerfile
+      docker-build-context: .
+      npm-cache: npm
+      node-version: "18"
+      run-tests: ${{ needs.determine-environment.outputs.run-tests == 'true' }}
+      run-linter: true
+
+  push-to-ecr:
+    name: Push to AWS ECR
+    runs-on: ubuntu-latest
+    needs: [build-scan-push, determine-environment]
+    if: needs.determine-environment.outputs.should-push-ecr == 'true'
+    steps:
+      - name: Checkout code
+        uses: actions/checkout@v4
+
+      - name: Configure AWS Credentials
+        uses: aws-actions/configure-aws-credentials@v4
+        with:
+          role-to-assume: arn:aws:iam::739962689681:role/GithubActionRole
+          aws-region: ${{ env.AWS_REGION }}
+
+      - name: Install jq
+        run: sudo apt-get update && sudo apt-get install -y jq
+
+      - name: Fetch ECR Configuration from SSM
+        id: get-ecr-config
+        shell: bash
+        run: |
+          ENVIRONMENT="${{ needs.determine-environment.outputs.environment }}"
+          SERVICE="${{ env.SERVICE_NAME }}"
+          AWS_REGION="${{ env.AWS_REGION }}"
+          
+          SSM_PARAMETER="/${{ env.ORGANIZATION }}/${{ env.PROJECT }}/$ENVIRONMENT/ec2/credentials"
+          
+          CREDENTIALS=$(aws ssm get-parameter \
+            --name "$SSM_PARAMETER" \
+            --region "$AWS_REGION" \
+            --with-decryption \
+            --query 'Parameter.Value' \
+            --output text 2>&1)
+          
+          ECR_IMAGE=$(echo "$CREDENTIALS" | jq -r ".ecr_registry_repository_urls[\"$SERVICE\"]")
+          echo "ecr_image=$ECR_IMAGE" >> $GITHUB_OUTPUT
+
+      - name: Login to Amazon ECR
+        uses: aws-actions/amazon-ecr-login@v2
+
+      - name: Push to ECR
+        env:
+          ECR_IMAGE: ${{ steps.get-ecr-config.outputs.ecr_image }}
+        run: |
+          ECR_IMAGE_WITH_TAG="${{ env.ECR_IMAGE }}:${{ needs.build-scan-push.outputs.image-tag }}"
+          docker tag ${{ needs.build-scan-push.outputs.image-name }} $ECR_IMAGE_WITH_TAG
+          docker push $ECR_IMAGE_WITH_TAG
+          echo "✅ Pushed to ECR: $ECR_IMAGE_WITH_TAG"
+
+  skip-ecr-push:
+    name: Build Complete (No ECR Push)
+    runs-on: ubuntu-latest
+    needs: [build-scan-push, determine-environment]
+    if: needs.determine-environment.outputs.should-push-ecr == 'false'
+    steps:
+      - name: Information
+        run: |
+          echo "✅ Build completed successfully"
+          echo "📸 Docker image: ${{ needs.build-scan-push.outputs.image-name }}"
+          echo "⏭️  NOT pushing to ECR (feature branch or PR)"
