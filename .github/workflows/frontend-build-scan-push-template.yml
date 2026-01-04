@@ -68,6 +68,8 @@ jobs:
           BRANCH="${{ github.ref_name }}"
           EVENT="${{ github.event_name }}"
           TARGET_BRANCH="${{ github.base_ref }}"
+          DISPATCH_ENV="${{ github.event.inputs.environment }}"
+          DISPATCH_RUN_TESTS="${{ github.event.inputs.run-tests }}"
           
           SHOULD_RUN="true"
           SHOULD_BUILD="true"
@@ -80,7 +82,16 @@ jobs:
           echo "📍 Target Branch: $TARGET_BRANCH"
           echo ""
           
-          if [[ "$EVENT" == "push" ]]; then
+          if [[ "$EVENT" == "workflow_dispatch" ]]; then
+            # WORKFLOW DISPATCH: Manual trigger with environment selection
+            ENVIRONMENT="$DISPATCH_ENV"
+            SHOULD_PUSH_ECR="true"
+            RUN_TESTS="${DISPATCH_RUN_TESTS:-true}"
+            echo "✅ Manual workflow dispatch detected"
+            echo "✅ Target Environment: $ENVIRONMENT"
+            echo "✅ Will build and PUSH to $ENVIRONMENT ECR"
+            echo "✅ Run Tests: $RUN_TESTS"
+          elif [[ "$EVENT" == "push" ]]; then
             # PUSH EVENT: Determine if merging to dev/prod
             if [[ "$BRANCH" == "${{ inputs.dev-branch }}" ]]; then
               ENVIRONMENT="dev"
