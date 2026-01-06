@@ -66,8 +66,8 @@ jobs:
         id: set-env
         run: |
           BRANCH="${{ github.ref_name }}"
+          REF="${{ github.ref }}"
           EVENT="${{ github.event_name }}"
-          TARGET_BRANCH="${{ github.base_ref }}"
           DISPATCH_ENV="${{ github.event.inputs.environment }}"
           DISPATCH_RUN_TESTS="${{ github.event.inputs.run-tests }}"
           
@@ -78,8 +78,8 @@ jobs:
           ENVIRONMENT="feature"
           
           echo "📍 Event: $EVENT"
-          echo "📍 Source Branch: $BRANCH"
-          echo "📍 Target Branch: $TARGET_BRANCH"
+          echo "📍 Ref: $REF"
+          echo "📍 Branch/Tag: $BRANCH"
           echo ""
           
           if [[ "$EVENT" == "workflow_dispatch" ]]; then
@@ -87,52 +87,37 @@ jobs:
             ENVIRONMENT="$DISPATCH_ENV"
             SHOULD_PUSH_ECR="true"
             RUN_TESTS="${DISPATCH_RUN_TESTS:-true}"
-            echo "✅ Manual workflow dispatch detected"
+            echo "✅ Manual workflow dispatch"
             echo "✅ Target Environment: $ENVIRONMENT"
-            echo "✅ Will build and PUSH to $ENVIRONMENT ECR"
-            echo "✅ Run Tests: $RUN_TESTS"
           elif [[ "$EVENT" == "push" ]]; then
-            # PUSH EVENT: Determine if merging to dev/prod
-            if [[ "$BRANCH" == "${{ inputs.dev-branch }}" ]]; then
-              ENVIRONMENT="dev"
-              SHOULD_PUSH_ECR="true"
-              RUN_TESTS="true"
-              echo "✅ Merge to ${{ inputs.dev-branch }} branch detected"
-              echo "✅ Will run tests, scan, build, and PUSH to ${{ inputs.dev-branch }} ECR"
-            elif [[ "$BRANCH" == "${{ inputs.prod-branch }}" ]]; then
+            # 🔥 PROD: Release Tag (v1.0.0, v2.0.0, etc.)
+            if [[ "$REF" == refs/tags/v* ]]; then
               ENVIRONMENT="prod"
               SHOULD_PUSH_ECR="true"
               RUN_TESTS="false"
-              echo "✅ Merge to ${{ inputs.prod-branch }} branch detected"
-              echo "✅ Will scan, build, and PUSH to ${{ inputs.prod-branch }} ECR (tests skipped)"
+              echo "🚀 Release tag detected: $BRANCH"
+              echo "🚀 Will build and PUSH to PROD ECR"
+            # 🔁 DEV: Push to main
+            elif [[ "$REF" == "refs/heads/main" ]]; then
+              ENVIRONMENT="dev"
+              SHOULD_PUSH_ECR="true"
+              RUN_TESTS="true"
+              echo "✅ Push to main branch detected"
+              echo "✅ Will build and PUSH to DEV ECR"
+            # 🧪 Feature branches
             else
               ENVIRONMENT="feature"
               SHOULD_PUSH_ECR="false"
               RUN_TESTS="true"
-              echo "✅ Push to feature branch '$BRANCH' detected"
-              echo "✅ Will run tests, scan, and build (will NOT push to ECR)"
+              echo "🧪 Feature branch push detected"
+              echo "🧪 Will build and scan only (no ECR push)"
             fi
           elif [[ "$EVENT" == "pull_request" ]]; then
-            # PR EVENT: Determine target branch
-            if [[ "$TARGET_BRANCH" == "${{ inputs.dev-branch }}" ]]; then
-              ENVIRONMENT="dev"
-              SHOULD_PUSH_ECR="false"
-              RUN_TESTS="true"
-              echo "✅ Pull request to ${{ inputs.dev-branch }} detected"
-              echo "✅ Will run tests, scan, and build (will NOT push to ECR)"
-            elif [[ "$TARGET_BRANCH" == "${{ inputs.prod-branch }}" ]]; then
-              ENVIRONMENT="prod"
-              SHOULD_PUSH_ECR="false"
-              RUN_TESTS="false"
-              echo "✅ Pull request to ${{ inputs.prod-branch }} detected"
-              echo "✅ Will scan and build (will NOT push to ECR, tests skipped)"
-            else
-              ENVIRONMENT="feature"
-              SHOULD_PUSH_ECR="false"
-              RUN_TESTS="true"
-              echo "✅ Pull request to feature branch detected"
-              echo "✅ Will run tests, scan, and build (will NOT push to ECR)"
-            fi
+            ENVIRONMENT="feature"
+            SHOULD_PUSH_ECR="false"
+            RUN_TESTS="true"
+            echo "🔍 Pull request detected"
+            echo "🔍 Will build and scan only (no ECR push)"
           fi
           
           echo ""
