@@ -44,6 +44,21 @@ on:
         description: "IAM Role ARN for AWS credentials"
         required: true
         type: string
+      run-tests:
+        description: "Enable test execution"
+        required: false
+        default: true
+        type: boolean
+      run-scan:
+        description: "Enable security scanning"
+        required: false
+        default: true
+        type: boolean
+      run-build:
+        description: "Enable Docker build"
+        required: false
+        default: true
+        type: boolean
 
 permissions:
   id-token: write
@@ -90,13 +105,23 @@ jobs:
             echo "✅ Manual workflow dispatch"
             echo "✅ Target Environment: $ENVIRONMENT"
           elif [[ "$EVENT" == "push" ]]; then
-            # 🔥 PROD: Release Tag (v1.0.0, v2.0.0, etc.)
+            # 🔥 PROD: Release Tag (v1.0.0, v2.0.0, etc.) - ONLY if on main branch
             if [[ "$REF" == refs/tags/v* ]]; then
-              ENVIRONMENT="prod"
-              SHOULD_PUSH_ECR="true"
-              RUN_TESTS="false"
-              echo "🚀 Release tag detected: $BRANCH"
-              echo "🚀 Will build and PUSH to PROD ECR"
+              # Verify tag is on main branch by checking git history
+              git fetch origin main --quiet 2>/dev/null
+              if git merge-base --is-ancestor "${{ github.sha }}" origin/main 2>/dev/null; then
+                ENVIRONMENT="prod"
+                SHOULD_PUSH_ECR="true"
+                RUN_TESTS="false"
+                echo "🚀 Release tag on main branch detected: $BRANCH"
+                echo "🚀 Will build and PUSH to PROD ECR"
+              else
+                ENVIRONMENT="feature"
+                SHOULD_PUSH_ECR="false"
+                RUN_TESTS="true"
+                echo "⚠️ Release tag detected on non-main branch: $BRANCH"
+                echo "⚠️ Will build and scan only (tags only allowed on main for prod)"
+              fi
             # 🔁 DEV: Push to main
             elif [[ "$REF" == "refs/heads/main" ]]; then
               ENVIRONMENT="dev"
@@ -109,7 +134,7 @@ jobs:
               ENVIRONMENT="feature"
               SHOULD_PUSH_ECR="false"
               RUN_TESTS="true"
-              echo "🧪 Feature branch push detected"
+              echo "🧪 Feature branch push detected: $BRANCH"
               echo "🧪 Will build and scan only (no ECR push)"
             fi
           elif [[ "$EVENT" == "pull_request" ]]; then
@@ -137,7 +162,7 @@ jobs:
     name: Run Tests (${{ needs.determine-environment.outputs.environment }})
     runs-on: ubuntu-latest
     needs: determine-environment
-    if: needs.determine-environment.outputs.run-tests == 'true'
+    if: needs.determine-environment.outputs.run-tests == 'true' && inputs.run-tests == true
     steps:
       - name: Checkout code
         uses: actions/checkout@v4
@@ -169,7 +194,7 @@ jobs:
     name: Scan Source Files with Trivy
     runs-on: ubuntu-latest
     needs: [determine-environment, run-tests]
-    if: needs.determine-environment.outputs.should-build == 'true'
+    if: needs.determine-environment.outputs.should-build == 'true' && inputs.run-scan == true
     steps:
       - name: Checkout code
         uses: actions/checkout@v4
@@ -201,6 +226,7 @@ jobs:
     needs: [scan-files, determine-environment, run-tests]
     if: |
       always() &&
+      inputs.run-build == true &&
       needs.determine-environment.outputs.should-build == 'true' &&
       (needs.scan-files.result == 'success' || needs.scan-files.result == 'skipped') &&
       (needs.run-tests.result == 'success' || needs.run-tests.result == 'skipped')
