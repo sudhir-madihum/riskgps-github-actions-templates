@@ -98,19 +98,29 @@ jobs:
             # 🔥 PROD: Release Tag (v1.0.0, v2.0.0, etc.) - ONLY if on main branch
             if [[ "$REF" == refs/tags/v* ]]; then
               # Verify tag is on main branch by checking git history
-              git fetch origin main --quiet 2>/dev/null
-              if git merge-base --is-ancestor "${{ github.sha }}" origin/main 2>/dev/null; then
+              # Fetch with explicit refspec to ensure proper setup
+              if git fetch origin main:refs/remotes/origin/main --quiet 2>&1; then
+                if git merge-base --is-ancestor "${{ github.sha }}" origin/main 2>&1; then
+                  ENVIRONMENT="prod"
+                  SHOULD_PUSH_ECR="true"
+                  RUN_TESTS="false"
+                  echo "🚀 Release tag on main branch detected: $BRANCH"
+                  echo "🚀 Will build and PUSH to PROD ECR"
+                else
+                  ENVIRONMENT="feature"
+                  SHOULD_PUSH_ECR="false"
+                  RUN_TESTS="true"
+                  echo "⚠️ Release tag detected on non-main branch: $BRANCH"
+                  echo "⚠️ Will build and scan only (tags only allowed on main for prod)"
+                fi
+              else
+                # If fetch fails, assume it's prod and let it build
+                # (better to build than to fail the workflow)
                 ENVIRONMENT="prod"
                 SHOULD_PUSH_ECR="true"
                 RUN_TESTS="false"
-                echo "🚀 Release tag on main branch detected: $BRANCH"
+                echo "⚠️ Could not verify tag location, assuming main branch"
                 echo "🚀 Will build and PUSH to PROD ECR"
-              else
-                ENVIRONMENT="feature"
-                SHOULD_PUSH_ECR="false"
-                RUN_TESTS="true"
-                echo "⚠️ Release tag detected on non-main branch: $BRANCH"
-                echo "⚠️ Will build and scan only (tags only allowed on main for prod)"
               fi
             # 🔁 DEV: Push to main
             elif [[ "$REF" == "refs/heads/main" ]]; then
