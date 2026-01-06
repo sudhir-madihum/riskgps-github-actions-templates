@@ -226,17 +226,25 @@ jobs:
           SERVICE="${{ inputs.service-name }}"
           BRANCH="${{ github.ref_name }}"
           
-          # Generate semantic version tag
-          MAJOR_VERSION="1"
-          MINOR_VERSION="0"
-          TAG="v${MAJOR_VERSION}.${MINOR_VERSION}.${{ github.run_number }}"
+          if [[ "$ENVIRONMENT" == "prod" ]]; then
+            # 🚀 PROD: Use git tag as docker tag (e.g., v1.0.0)
+            TAG="$BRANCH"
+            echo "🚀 Production build: Using release tag as image tag"
+          else
+            # 🔁 DEV & FEATURE: Use semantic version with build number
+            MAJOR_VERSION="1"
+            MINOR_VERSION="0"
+            TAG="v${MAJOR_VERSION}.${MINOR_VERSION}.${{ github.run_number }}"
+            echo "🔁 Development/Feature build: Using semantic version with build number"
+          fi
+          
           IMAGE_NAME="${SERVICE}:${TAG}"
           
           echo "📊 Image Information:"
           echo "   Service: $SERVICE"
           echo "   Environment: $ENVIRONMENT"
-          echo "   Branch: $BRANCH"
-          echo "   Tag: $TAG"
+          echo "   Branch/Tag: $BRANCH"
+          echo "   Docker Tag: $TAG"
           echo "   Image Name: $IMAGE_NAME"
           echo ""
           
