@@ -20,16 +20,6 @@ on:
         required: false
         default: "us-east-1"
         type: string
-      dev-branch:
-        description: "Development branch name (e.g., dev)"
-        required: false
-        default: "dev"
-        type: string
-      prod-branch:
-        description: "Production branch name (e.g., prod)"
-        required: false
-        default: "prod"
-        type: string
       dockerfile-path:
         description: "Path to Dockerfile (default: Dockerfile)"
         required: false
