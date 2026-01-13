@@ -193,7 +193,7 @@ jobs:
   scan-files:
     name: Scan Source Files with Trivy
     runs-on: ubuntu-latest
-    needs: [determine-environment, run-tests]
+    needs: [determine-environment]
     if: needs.determine-environment.outputs.should-build == 'true' && inputs.run-scan == true
     steps:
       - name: Checkout code
