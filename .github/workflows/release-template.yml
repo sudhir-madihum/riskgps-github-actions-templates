@@ -208,6 +208,30 @@ jobs:
       - name: Checkout code
         uses: actions/checkout@v4
 
+      - name: Set up Node.js (if package.json exists)
+        uses: actions/setup-node@v4
+        with:
+          node-version: "18"
+          cache: "npm"
+          cache-dependency-path: ${{ inputs.working-directory }}/package-lock.json
+        if: hashFiles(format('{0}/package.json', inputs.working-directory)) != ''
+
+      - name: Install Node dependencies (if package.json exists)
+        run: npm ci --legacy-peer-deps || true
+        working-directory: ${{ inputs.working-directory }}
+        if: hashFiles(format('{0}/package.json', inputs.working-directory)) != ''
+
+      - name: Set up Python (if requirements.txt exists)
+        uses: actions/setup-python@v4
+        with:
+          python-version: "3.11"
+        if: hashFiles(format('{0}/requirements.txt', inputs.working-directory)) != ''
+
+      - name: Install Python dependencies (if requirements.txt exists)
+        run: pip install -r requirements.txt || true
+        working-directory: ${{ inputs.working-directory }}
+        if: hashFiles(format('{0}/requirements.txt', inputs.working-directory)) != ''
+
       - name: Trivy Filesystem Scan (Universal - All Languages)
         uses: aquasecurity/trivy-action@master
         with:
