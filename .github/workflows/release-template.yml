@@ -200,34 +200,19 @@ jobs:
           echo "✅ Test step completed for ${{ inputs.service-name }}"
 
   scan-files:
-    name: Scan Source Files with Trivy
+    name: Scan Source Files with Trivy (Universal)
     runs-on: ubuntu-latest
     needs: [determine-environment]
-    defaults:
-      run:
-        working-directory: ${{ inputs.working-directory }}
     if: needs.determine-environment.outputs.should-build == 'true' && inputs.run-scan == true
     steps:
       - name: Checkout code
         uses: actions/checkout@v4
 
-      - name: Set up Node.js
-        uses: actions/setup-node@v4
-        with:
-          node-version: "18"
-          cache: "npm"
-          cache-dependency-path: ${{ inputs.working-directory }}/package-lock.json   
-
-      - name: Install dependencies
-        run: |
-          echo "📦 Installing dependencies for scanning"
-          npm ci || { echo "❌ Failed to install dependencies"; exit 1; }
-
-      - name: Trivy Filesystem Scan
+      - name: Trivy Filesystem Scan (Universal - All Languages)
         uses: aquasecurity/trivy-action@master
         with:
           scan-type: "fs"
-          scan-ref: "."
+          scan-ref: "${{ inputs.working-directory }}"
           format: "table"
           exit-code: "0"
           ignore-unfixed: true
