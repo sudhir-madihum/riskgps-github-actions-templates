@@ -68,7 +68,6 @@ on:
 permissions:
   id-token: write
   contents: read
-  security-events: write
 
 concurrency:
   group: ${{ github.ref }}
