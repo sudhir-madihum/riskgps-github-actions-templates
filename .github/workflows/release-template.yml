@@ -200,50 +200,27 @@ jobs:
           echo "✅ Test step completed for ${{ inputs.service-name }}"
 
   scan-files:
-    name: Scan Source Files with Trivy (Universal)
+    name: Scan Source Files with Trivy
     runs-on: ubuntu-latest
     needs: [determine-environment]
-    if: needs.determine-environment.outputs.should-build == 'true' && inputs.run-scan == true
     defaults:
       run:
         working-directory: ${{ inputs.working-directory }}
+    if: needs.determine-environment.outputs.should-build == 'true' && inputs.run-scan == true
     steps:
       - name: Checkout code
         uses: actions/checkout@v4
 
-      - name: Detect languages and dependencies
-        run: |
-          echo "🔍 Language detection:"
-          [ -f package.json ] && echo "  ✅ Node.js (package.json found)" || echo "  ⏭️ No Node.js"
-          [ -f requirements.txt ] && echo "  ✅ Python (requirements.txt found)" || echo "  ⏭️ No Python"
-          [ -f go.mod ] && echo "  ✅ Go (go.mod found)" || echo "  ⏭️ No Go"
-          [ -f Gemfile ] && echo "  ✅ Ruby (Gemfile found)" || echo "  ⏭️ No Ruby"
-
-      - name: Install Trivy
-        uses: aquasecurity/setup-trivy@v0.2.0
+      - name: Trivy Filesystem Scan (Dynamic)
+        uses: aquasecurity/trivy-action@master
         with:
-          version: v0.68.1
-
-      - name: Trivy Filesystem Scan (Universal - All Languages)
-        run: |
-          echo "🔍 Scanning: ."
-          trivy fs . \
-            --scanners vuln,secret \
-            --severity CRITICAL,HIGH \
-            --ignore-unfixed \
-            --format sarif \
-            --output trivy-fs-results.sarif
-
-      - name: Trivy Filesystem Scan (Source Code)
-        uses: aquasecurity/trivy-action@0.33.1
-        with:
-          scan-type: fs
-          scan-ref: ${{ inputs.working-directory }}
-          scanners: vuln
-          format: table
-          severity: CRITICAL
+          scan-type: "fs"
+          scan-ref: "."
+          format: "table"
+          exit-code: "0"
           ignore-unfixed: true
-          exit-code: "1"
+          scanners: "vuln,secret,misconfig,license"
+          severity: "CRITICAL,HIGH"
 
   build-scan-push:
     name: Build, Scan, and ${{ needs.determine-environment.outputs.should-push-ecr == 'true' && 'Push to ECR' || 'Tag Image' }}
