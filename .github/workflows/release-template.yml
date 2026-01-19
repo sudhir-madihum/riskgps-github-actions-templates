@@ -54,16 +54,6 @@ on:
         required: false
         default: "."
         type: string
-      dev-branch:
-        description: "Development branch name (default: main)"
-        required: false
-        default: "main"
-        type: string
-      prod-branch:
-        description: "Production branch name (default: main)"
-        required: false
-        default: "main"
-        type: string
 
 permissions:
   id-token: write
@@ -218,29 +208,40 @@ jobs:
       - name: Checkout code
         uses: actions/checkout@v4
 
-      - name: Install Trivy
-        uses: aquasecurity/setup-trivy@v0.2.0
+      - name: Set up Node.js (if package.json exists)
+        uses: actions/setup-node@v4
         with:
-          version: v0.68.1
+          node-version: "18"
+          cache: "npm"
+          cache-dependency-path: ${{ inputs.working-directory }}/package-lock.json
+        if: hashFiles(format('{0}/package.json', inputs.working-directory)) != ''
 
-      - name: Trivy Filesystem Scan (Universal - All Languages)
-        run: |
-          echo "🔍 Scanning: ${{ inputs.working-directory }}"
-          trivy fs . \
-            --scanners vuln,secret \
-            --severity CRITICAL,HIGH \
-            --ignore-unfixed \
-            --format sarif \
-            --output trivy-fs-results.sarif
+      - name: Install Node dependencies (if package.json exists)
+        run: npm ci --legacy-peer-deps || true
         working-directory: ${{ inputs.working-directory }}
+        if: hashFiles(format('{0}/package.json', inputs.working-directory)) != ''
 
-      - name: Upload Trivy filesystem scan results to GitHub Security tab
-        uses: github/codeql-action/upload-sarif@v4
-        if: always() && hashFiles('trivy-fs-results.sarif') != ''
-        continue-on-error: true
+      - name: Set up Python (if requirements.txt exists)
+        uses: actions/setup-python@v4
         with:
-          sarif_file: "trivy-fs-results.sarif"
-          category: "trivy-fs-scan"
+          python-version: "3.11"
+        if: hashFiles(format('{0}/requirements.txt', inputs.working-directory)) != ''
+
+      - name: Install Python dependencies (if requirements.txt exists)
+        run: pip install -r requirements.txt || true
+        working-directory: ${{ inputs.working-directory }}
+        if: hashFiles(format('{0}/requirements.txt', inputs.working-directory)) != ''
+
+      - name: Trivy Filesystem Scan (Python / Node aware)
+        uses: aquasecurity/trivy-action@v0.33.1
+        with:
+          scan-type: fs
+          scan-ref: ./${{ inputs.working-directory }}
+          format: table
+          exit-code: "0"
+          ignore-unfixed: true
+          vuln-type: "os,library"
+          severity: "CRITICAL,HIGH"
 
   build-scan-push:
     name: Build, Scan, and ${{ needs.determine-environment.outputs.should-push-ecr == 'true' && 'Push to ECR' || 'Tag Image' }}
@@ -327,25 +328,15 @@ jobs:
           fi
 
       - name: Scan Docker image with Trivy
-        uses: aquasecurity/trivy-action@0.33.1
+        uses: aquasecurity/trivy-action@master
         with:
           scan-type: image
           image-ref: ${{ env.IMAGE_NAME }}
-          format: "sarif"
-          output: "trivy-image-results.sarif"
+          format: "table"
           exit-code: "0"
           ignore-unfixed: true
           vuln-type: "os,library"
           severity: "CRITICAL,HIGH"
-          skip-setup-trivy: false
-
-      - name: Upload Trivy image scan results to GitHub Security tab
-        uses: github/codeql-action/upload-sarif@v4
-        if: always() && hashFiles('trivy-image-results.sarif') != ''
-        continue-on-error: true
-        with:
-          sarif_file: "trivy-image-results.sarif"
-          category: "trivy-image-scan"
 
       - name: Push to ECR (Feature/PR Builds - No Push)
         if: needs.determine-environment.outputs.should-push-ecr == 'false'
@@ -438,9 +429,9 @@ jobs:
           if [[ "${{ needs.determine-environment.outputs.should-push-ecr }}" == "true" ]]; then
             ENV_NAME="${{ needs.determine-environment.outputs.environment }}"
             if [[ "$ENV_NAME" == "dev" ]]; then
-              echo "✅ **Push to main branch Detected**: Ran tests, scanned, built, and **PUSHED to DEV ECR**" >> $GITHUB_STEP_SUMMARY
+              echo "✅ **Merge to ${{ inputs.dev-branch }} Detected**: Ran tests, scanned, built, and **PUSHED to ${{ inputs.dev-branch }} ECR**" >> $GITHUB_STEP_SUMMARY
             elif [[ "$ENV_NAME" == "prod" ]]; then
-              echo "✅ **Release tag on main Detected**: Scanned, built, and **PUSHED to PROD ECR** (tests skipped)" >> $GITHUB_STEP_SUMMARY
+              echo "✅ **Merge to ${{ inputs.prod-branch }} Detected**: Scanned, built, and **PUSHED to ${{ inputs.prod-branch }} ECR** (tests skipped)" >> $GITHUB_STEP_SUMMARY
             fi
           else
             if [[ "${{ github.event_name }}" == "pull_request" ]]; then
