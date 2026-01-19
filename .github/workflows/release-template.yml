@@ -214,9 +214,20 @@ jobs:
     runs-on: ubuntu-latest
     needs: [determine-environment]
     if: needs.determine-environment.outputs.should-build == 'true' && inputs.run-scan == true
+    defaults:
+      run:
+        working-directory: ${{ inputs.working-directory }}
     steps:
       - name: Checkout code
         uses: actions/checkout@v4
+
+      - name: Detect languages and dependencies
+        run: |
+          echo "🔍 Language detection:"
+          [ -f package.json ] && echo "  ✅ Node.js (package.json found)" || echo "  ⏭️ No Node.js"
+          [ -f requirements.txt ] && echo "  ✅ Python (requirements.txt found)" || echo "  ⏭️ No Python"
+          [ -f go.mod ] && echo "  ✅ Go (go.mod found)" || echo "  ⏭️ No Go"
+          [ -f Gemfile ] && echo "  ✅ Ruby (Gemfile found)" || echo "  ⏭️ No Ruby"
 
       - name: Install Trivy
         uses: aquasecurity/setup-trivy@v0.2.0
@@ -225,14 +236,13 @@ jobs:
 
       - name: Trivy Filesystem Scan (Universal - All Languages)
         run: |
-          echo "🔍 Scanning: ${{ inputs.working-directory }}"
+          echo "🔍 Scanning: ."
           trivy fs . \
             --scanners vuln,secret \
             --severity CRITICAL,HIGH \
             --ignore-unfixed \
             --format sarif \
             --output trivy-fs-results.sarif
-        working-directory: ${{ inputs.working-directory }}
 
       - name: Upload Trivy filesystem scan results to GitHub Security tab
         uses: github/codeql-action/upload-sarif@v4
