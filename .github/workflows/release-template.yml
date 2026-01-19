@@ -233,7 +233,7 @@ jobs:
         if: hashFiles(format('{0}/requirements.txt', inputs.working-directory)) != ''
 
       - name: Trivy Filesystem Scan (Python / Node aware)
-        uses: aquasecurity/trivy-action@v0.33.1
+        uses: aquasecurity/trivy-action@master
         with:
           scan-type: fs
           scan-ref: ./${{ inputs.working-directory }}
