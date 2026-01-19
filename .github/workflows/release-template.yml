@@ -218,30 +218,21 @@ jobs:
       - name: Checkout code
         uses: actions/checkout@v4
 
-      - name: List files in working directory (Debug)
-        run: |
-          echo "📂 Listing files in ${{ inputs.working-directory }}:"
-          ls -la ${{ inputs.working-directory }} || echo "Directory does not exist"
-          echo ""
-          echo "📂 Checking for dependency files:"
-          find . -name "requirements.txt" -o -name "package.json" -o -name "go.mod" 2>/dev/null | head -20
+      - name: Install Trivy
+        uses: aquasecurity/setup-trivy@v0.2.0
+        with:
+          version: v0.68.1
 
       - name: Trivy Filesystem Scan (Universal - All Languages)
-        uses: aquasecurity/trivy-action@0.33.1
-        with:
-          scan-type: "fs"
-          scan-ref: "${{ inputs.working-directory }}"
-          format: "sarif"
-          output: "trivy-fs-results.sarif"
-          exit-code: "0"
-          ignore-unfixed: true
-          vuln-type: "os,library"
-          severity: "CRITICAL,HIGH"
-          scanners: "vuln,secret"
-        env:
-          TRIVY_OFFLINE_SCAN: false
-          TRIVY_SKIP_DB_UPDATE: false
-          TRIVY_DEBUG: true
+        run: |
+          echo "🔍 Scanning: ${{ inputs.working-directory }}"
+          trivy fs . \
+            --scanners vuln,secret \
+            --severity CRITICAL,HIGH \
+            --ignore-unfixed \
+            --format sarif \
+            --output trivy-fs-results.sarif
+        working-directory: ${{ inputs.working-directory }}
 
       - name: Upload Trivy filesystem scan results to GitHub Security tab
         uses: github/codeql-action/upload-sarif@v4
