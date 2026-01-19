@@ -232,16 +232,16 @@ jobs:
         working-directory: ${{ inputs.working-directory }}
         if: hashFiles(format('{0}/requirements.txt', inputs.working-directory)) != ''
 
-      - name: Trivy Filesystem Scan (Python / Node aware)
-        uses: aquasecurity/trivy-action@master
+      - name: Trivy Filesystem Scan (Source Code)
+        uses: aquasecurity/trivy-action@v0.20.0
         with:
           scan-type: fs
-          scan-ref: ./${{ inputs.working-directory }}
+          scan-ref: ${{ inputs.working-directory }}
+          scanners: vuln
           format: table
-          exit-code: "0"
+          severity: CRITICAL
           ignore-unfixed: true
-          vuln-type: "os,library"
-          severity: "CRITICAL,HIGH"
+          exit-code: "1"
 
   build-scan-push:
     name: Build, Scan, and ${{ needs.determine-environment.outputs.should-push-ecr == 'true' && 'Push to ECR' || 'Tag Image' }}
