@@ -500,7 +500,7 @@ jobs:
   trigger-deployment:
     name: Trigger Downstream Deployment
     runs-on: ubuntu-latest
-    needs: determine-environment
+    needs: [determine-environment, build-scan-push]
     if: needs.determine-environment.outputs.environment == 'dev' && needs.determine-environment.outputs.should-push-ecr == 'true'
     steps:
       - name: Checkout code
@@ -510,7 +510,7 @@ jobs:
         if: needs.determine-environment.outputs.environment == 'dev' && needs.determine-environment.outputs.should-push-ecr == 'true'
         uses: peter-evans/repository-dispatch@v3
         with:
-          token: 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
+          token: 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
           repository: sudhir-madihum/riskgps-runtime
           event-type: deploy-to-ec2
           client-payload: |
