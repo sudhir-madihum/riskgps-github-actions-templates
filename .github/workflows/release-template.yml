@@ -54,6 +54,10 @@ on:
         required: false
         default: "."
         type: string
+    secrets:
+      PERSONAL_ACCESS_TOKEN:
+        description: "PAT used to trigger downstream workflow_dispatch"
+        required: true
 
 permissions:
   id-token: write
