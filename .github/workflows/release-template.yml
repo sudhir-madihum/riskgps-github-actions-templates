@@ -398,7 +398,7 @@ jobs:
         if: needs.determine-environment.outputs.environment == 'dev' && needs.determine-environment.outputs.should-push-ecr == 'true'
         uses: peter-evans/repository-dispatch@v3
         with:
-          token: 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
+          token: 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
           repository: sudhir-madihum/riskgps-runtime
           event-type: deploy-to-ec2
           client-payload: |
