@@ -54,6 +54,10 @@ on:
         required: false
         default: "."
         type: string
+    secrets:
+      PERSONAL_ACCESS_TOKEN:
+        description: "PAT used to trigger downstream workflow_dispatch"
+        required: true
 
 permissions:
   id-token: write
@@ -393,6 +397,25 @@ jobs:
           echo "✅ Image pushed to ECR successfully!"
           echo "   Repository: $ECR_IMAGE"
           echo "   Tag: ${{ env.TAG }}"
+
+      - name: Trigger downstream deployment (workflow_dispatch in riskgps-runtime)
+        if: needs.determine-environment.outputs.environment == 'dev' && needs.determine-environment.outputs.should-push-ecr == 'true'
+        env:
+          GH_TOKEN: ${{ secrets.PERSONAL_ACCESS_TOKEN }}
+        run: |
+          curl -X POST \
+            https://api.github.com/repos/sudhir-madihum/riskgps-runtime/actions/workflows/deploy.yml/dispatches \
+            -H "Accept: application/vnd.github+json" \
+            -H "Authorization: Bearer ${{ secrets.PERSONAL_ACCESS_TOKEN }}" \
+            -H "X-GitHub-Api-Version: 2022-11-28" \
+            -d '{
+              "ref": "main",
+              "inputs": {
+                "environment": "dev",
+                "image_mode": "latest",
+                "image_tags": ""
+              }
+            }'
 
   workflow-summary:
     name: Workflow Summary
