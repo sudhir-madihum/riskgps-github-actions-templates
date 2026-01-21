@@ -394,18 +394,22 @@ jobs:
           echo "   Repository: $ECR_IMAGE"
           echo "   Tag: ${{ env.TAG }}"
 
-      - name: Trigger downstream deployment (deploy.yml in riskgps-runtime)
+      - name: Trigger downstream deployment (workflow_dispatch in riskgps-runtime)
         if: needs.determine-environment.outputs.environment == 'dev' && needs.determine-environment.outputs.should-push-ecr == 'true'
-        uses: peter-evans/repository-dispatch@v3
-        with:
-          token: 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
-          repository: sudhir-madihum/riskgps-runtime
-          event-type: deploy-to-ec2
-          client-payload: |
-            {
-              "environment": "dev",
-              "image_mode": "latest"
-            }
+        env:
+          GH_TOKEN: ${{ secrets.PERSONAL_ACCESS_TOKEN }}
+        run: |
+          curl -X POST \
+            -H "Accept: application/vnd.github+json" \
+            -H "Authorization: Bearer $GH_TOKEN" \
+            https://api.github.com/repos/sudhir-madihum/riskgps-runtime/actions/workflows/deploy.yml/dispatches \
+            -d '{
+              "ref": "main",
+              "inputs": {
+                "environment": "dev",
+                "image_mode": "latest"
+              }
+            }'
 
   workflow-summary:
     name: Workflow Summary
