@@ -182,7 +182,8 @@ jobs:
       - name: Set up Node.js
         uses: actions/setup-node@v6
         with:
-          node-version: "20"
+          node-version: '24'
+          check-latest: true
           cache: "npm"
           cache-dependency-path: ${{ inputs.working-directory }}/package-lock.json
 
@@ -218,7 +219,8 @@ jobs:
       - name: Set up Node.js (if package.json exists)
         uses: actions/setup-node@v6
         with:
-          node-version: "20"
+          node-version: '24'
+          check-latest: true
           cache: "npm"
           cache-dependency-path: ${{ inputs.working-directory }}/package-lock.json
         if: hashFiles(format('{0}/package.json', inputs.working-directory)) != ''
