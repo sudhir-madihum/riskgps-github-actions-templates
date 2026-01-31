@@ -189,8 +189,7 @@ jobs:
       - name: Install dependencies
         run: |
           echo "📦 Installing dependencies for ${{ inputs.service-name }}"
-          npm ci || { echo "❌ Failed to install dependencies"; exit 1; }
-
+          npm ci --legacy-peer-deps || npm install --legacy-peer-deps || { echo "❌ Failed to install dependencies"; exit 1; }
       - name: Run linter
         run: |
           echo "🔍 Running linter"
